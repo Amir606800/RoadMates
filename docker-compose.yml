@@ -1,0 +1,96 @@
+name: roadmates
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: [internal]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    user: redis
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+    command: [sh, -c, 'exec redis-server --requirepass "$$REDIS_PASSWORD" --maxmemory 128mb --maxmemory-policy allkeys-lru --save "" --appendonly no']
+    networks: [internal]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  migrate:
+    image: migrate/migrate:v4.18.3
+    volumes:
+      - ./backend/migrations:/migrations:ro
+    entrypoint: [migrate, -path, /migrations, -database, '${DATABASE_URL:?Set DATABASE_URL in .env}']
+    command: [up]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal]
+    restart: "no"
+
+  backend:
+    image: roadmates-backend:${APP_VERSION:-0.1.0}
+    build:
+      context: ./backend
+      args:
+        VERSION: ${APP_VERSION:-0.1.0}
+        COMMIT: ${COMMIT:-unknown}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
+      tags: [roadmates-backend:latest]
+    env_file: .env
+    environment:
+      PORT: "8080"
+      TRUST_PROXY_HEADERS: "true"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    networks: [internal]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, 'http://127.0.0.1:8080/healthz']
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+
+  frontend:
+    image: roadmates-frontend:${APP_VERSION:-0.1.0}
+    build:
+      context: ./frontend
+      args:
+        VITE_APP_VERSION: ${APP_VERSION:-0.1.0}
+        VITE_APP_COMMIT: ${COMMIT:-unknown}
+      tags: [roadmates-frontend:latest]
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-8081}:8080"
+    networks: [public, internal]
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  public:
+  internal:
+    internal: true

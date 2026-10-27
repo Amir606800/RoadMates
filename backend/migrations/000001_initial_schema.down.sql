@@ -1,0 +1,12 @@
+BEGIN;
+DROP TABLE rides;
+DROP TABLE districts;
+DROP TABLE driver_applications;
+DROP TABLE refresh_tokens;
+DROP TRIGGER users_client_role ON users;
+DROP FUNCTION grant_client_role();
+DROP TABLE user_roles;
+DROP TRIGGER users_updated_at ON users;
+DROP FUNCTION set_updated_at();
+DROP TABLE users;
+COMMIT;

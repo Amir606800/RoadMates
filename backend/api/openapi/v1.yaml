@@ -1,0 +1,1941 @@
+openapi: 3.0.3
+info:
+  title: RoadMates API v1
+  version: 0.1.0
+  description: 'Versioned endpoints use /api/v1. Operational endpoints remain unversioned.
+
+    All responses carry X-API-Version: 1 and X-Request-ID. Every JSON error is
+
+    {code, message, request_id}. JSON responses use Cache-Control: no-store;
+
+    server-side caching is separate from browser caching. A valid incoming request
+
+    ID is preserved (1–128 ASCII letters, digits, . _ : -); otherwise one is generated.
+
+    All GET endpoints also accept HEAD. Unsupported methods return 405 and Allow.
+
+    Unknown /api/vN routes return 404 API_VERSION_NOT_FOUND.
+
+
+    Optional X-App-Version must be a full semantic version. Invalid values return
+
+    400 APP_VERSION_INVALID; versions below MIN_SUPPORTED_APP_VERSION return
+
+    426 APP_VERSION_UNSUPPORTED. Missing headers are allowed and logged. Health
+
+    and readiness are exempt. Clients send X-Client: web. Configured deprecated v1
+
+    responses include Deprecation and Sunset headers.
+
+
+    JSON request bodies have a 16 KiB limit. Unknown fields, invalid media types,
+
+    extra JSON documents, or invalid input return 400. Strings are trimmed at
+
+    the handler boundary. Error messages never echo credentials or PINs.
+
+
+    Rate limits are per IP and route group in fixed one-minute windows: register 5,
+
+    login 10, refresh 60, driver applications 10. Redis shares counters between
+
+    instances; outages use a bounded per-process fallback. 429 includes Retry-After.
+
+
+    JWT access tokens remain in React memory. The opaque refresh token is only in
+
+    the HttpOnly SameSite=Lax roadmates_refresh cookie (Path=/api/v1/auth; Secure
+
+    under HTTPS). Rotation is mandatory; reuse revokes the entire token family.
+
+    Refresh and logout require the exact configured Origin and
+
+    X-Requested-With: roadmates. All application pages use a single browser origin.
+
+    '
+servers:
+- url: /
+  description: Same origin as the frontend nginx proxy
+tags:
+- name: Operations
+- name: Authentication
+- name: Driver verification
+- name: Administration
+- name: Districts
+- name: Rides
+paths:
+  /healthz:
+    get:
+      tags:
+      - Operations
+      operationId: health
+      summary: Liveness independent of dependencies
+      description: Liveness independent of dependencies
+      parameters:
+      - $ref: '#/components/parameters/RequestID'
+      - $ref: '#/components/parameters/Client'
+      security: []
+      responses:
+        '200':
+          description: Process is alive.
+          headers:
+            X-API-Version:
+              $ref: '#/components/headers/X-API-Version'
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  status:
+                    type: string
+                    enum:
+                    - ok
+                required:
+                - status
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /readyz:
+    get:
+      tags:
+      - Operations
+      operationId: ready
+      summary: Readiness of PostgreSQL and Redis
+      description: 200 ok when both dependencies are up; 200 degraded if only Redis is down. PostgreSQL
+        down returns 503 not_ready. Checks have a two-second deadline.
+      parameters:
+      - $ref: '#/components/parameters/RequestID'
+      - $ref: '#/components/parameters/Client'
+      security: []
+      responses:
+        '200':
+          description: Readiness of PostgreSQL and Redis.
+          headers:
+            X-API-Version:
+              $ref: '#/components/headers/X-API-Version'
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Readiness'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: PostgreSQL is unavailable.
+          headers:
+            X-API-Version:
+              $ref: '#/components/headers/X-API-Version'
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Readiness'
+  /api/version:
+    get:
+      tags:
+      - Operations
+      operationId: appVersion
+      summary: Current app/build and compatibility metadata
+      description: Current app/build and compatibility metadata
+      parameters:
+      - $ref: '#/components/parameters/RequestID'
+      - $ref: '#/components/parameters/Client'
+      - $ref: '#/components/parameters/AppVersion'
+      security: []
+      responses:
+        '200':
+          description: Current app/build and compatibility metadata.
+          headers:
+            X-API-Version:
+              $ref: '#/components/headers/X-API-Version'
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Version'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '426':
+          $ref: '#/components/responses/UpgradeRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/:
+    get:
+      tags:
+      - Operations
+      operationId: v1Index
+      summary: API v1 index
+      description: API v1 index
+      parameters:
+      - $ref: '#/components/parameters/RequestID'
+      - $ref: '#/components/parameters/Client'
+      - $ref: '#/components/parameters/AppVersion'
+      security: []
+      responses:
+        '200':
+          description: API generation.
+          headers:
+            X-API-Version:
+              $ref: '#/components/headers/X-API-Version'
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  api_version:
+                    type: string
+                    enum:
+                    - v1
+                required:
+                - api_version
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '426':
+          $ref: '#/components/responses/UpgradeRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1:
+    get:
+      tags:
+      - Operations
+      operationId: v1Redirect
+      summary: Redirect to /api/v1/
+      description: Redirect to /api/v1/
+      parameters:
+      - $ref: '#/components/parameters/RequestID'
+      - $ref: '#/components/parameters/Client'
+      - $ref: '#/components/parameters/AppVersion'
+      security: []
+      responses:
+        '308':
+          description: Redirect to /api/v1/.
+          headers:
+            X-API-Version:
+              $ref: '#/components/headers/X-API-Version'
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            Location:
+              schema:
+                type: string
+                enum:
+                - /api/v1/
+              description: Canonical API index path.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '426':
+          $ref: '#/components/responses/UpgradeRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/auth/register:
+    post:
+      tags:
+      - Authentication
+      operationId: register
+      summary: Register a client account
+      description: Email is lowercased. New users automatically receive client. Duplicate email returns
+        409 EMAIL_TAKEN. Sets a refresh cookie and returns an in-memory access token.
+      parameters:
+      - $ref: '#/components/parameters/RequestID'
+      - $ref: '#/components/parameters/Client'
+      - $ref: '#/components/parameters/AppVersion'
+      security: []
+      responses:
+        '201':
+          description: Register a client account.
+          headers:
+            X-API-Version:
+              $ref: '#/components/headers/X-API-Version'
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            Set-Cookie:
+              $ref: '#/components/headers/Set-Cookie'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '426':
+          $ref: '#/components/responses/UpgradeRequired'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+  /api/v1/auth/login:
+    post:
+      tags:
+      - Authentication
+      operationId: login
+      summary: Sign in
+      description: Unknown email and wrong password share INVALID_CREDENTIALS and the same bcrypt failure
+        path. Sets a new refresh-token family cookie.
+      parameters:
+      - $ref: '#/components/parameters/RequestID'
+      - $ref: '#/components/parameters/Client'
+      - $ref: '#/components/parameters/AppVersion'
+      security: []
+      responses:
+        '200':
+          description: Sign in.
+          headers:
+            X-API-Version:
+              $ref: '#/components/headers/X-API-Version'
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            Set-Cookie:
+              $ref: '#/components/headers/Set-Cookie'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '426':
+          $ref: '#/components/responses/UpgradeRequired'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+  /api/v1/auth/refresh:
+    post:
+      tags:
+      - Authentication
+      operationId: refresh
+      summary: Rotate the refresh session
+      description: Consumes the refresh cookie, revokes it and issues its replacement in one transaction.
+        Reusing a revoked token revokes its entire family and returns 401 REFRESH_TOKEN_REUSED. Returns
+        current roles, including driver after approval.
+      parameters:
+      - $ref: '#/components/parameters/RequestID'
+      - $ref: '#/components/parameters/Client'
+      - $ref: '#/components/parameters/AppVersion'
+      - $ref: '#/components/parameters/Origin'
+      - $ref: '#/components/parameters/CSRF'
+      security:
+      - refreshCookie: []
+      responses:
+        '200':
+          description: Rotate the refresh session.
+          headers:
+            X-API-Version:
+              $ref: '#/components/headers/X-API-Version'
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            Set-Cookie:
+              $ref: '#/components/headers/Set-Cookie'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '426':
+          $ref: '#/components/responses/UpgradeRequired'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/auth/logout:
+    post:
+      tags:
+      - Authentication
+      operationId: logout
+      summary: Revoke the current refresh family
+      description: Revokes the current refresh family and clears its cookie. Missing/unknown cookie still
+        returns 204. Existing stateless access JWTs remain valid until expiry; the app clears its memory
+        token.
+      parameters:
+      - $ref: '#/components/parameters/RequestID'
+      - $ref: '#/components/parameters/Client'
+      - $ref: '#/components/parameters/AppVersion'
+      - $ref: '#/components/parameters/Origin'
+      - $ref: '#/components/parameters/CSRF'
+      security:
+      - refreshCookie: []
+      - {}
+      responses:
+        '204':
+          description: Revoke the current refresh family.
+          headers:
+            X-API-Version:
+              $ref: '#/components/headers/X-API-Version'
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            Set-Cookie:
+              $ref: '#/components/headers/Set-Cookie'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '426':
+          $ref: '#/components/responses/UpgradeRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/auth/me:
+    get:
+      tags:
+      - Authentication
+      operationId: me
+      summary: Current active user and roles
+      description: Current active user and roles
+      parameters:
+      - $ref: '#/components/parameters/RequestID'
+      - $ref: '#/components/parameters/Client'
+      - $ref: '#/components/parameters/AppVersion'
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Current active user and roles.
+          headers:
+            X-API-Version:
+              $ref: '#/components/headers/X-API-Version'
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '426':
+          $ref: '#/components/responses/UpgradeRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      x-required-roles:
+      - client
+  /api/v1/driver-applications:
+    post:
+      tags:
+      - Driver verification
+      operationId: applyToDrive
+      summary: Submit a driver application
+      description: One pending application per user. Already verified drivers return DRIVER_ALREADY_VERIFIED,
+        including with an older client-only JWT. PIN is encrypted before persistence and omitted from
+        this response.
+      parameters:
+      - $ref: '#/components/parameters/RequestID'
+      - $ref: '#/components/parameters/Client'
+      - $ref: '#/components/parameters/AppVersion'
+      security:
+      - bearerAuth: []
+      responses:
+        '201':
+          description: Submit a driver application.
+          headers:
+            X-API-Version:
+              $ref: '#/components/headers/X-API-Version'
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverApplication'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '426':
+          $ref: '#/components/responses/UpgradeRequired'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      x-required-roles:
+      - client
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DriverApplicationRequest'
+  /api/v1/driver-applications/me:
+    get:
+      tags:
+      - Driver verification
+      operationId: myDriverApplication
+      summary: Latest driver application
+      description: 404 NOT_FOUND when no application exists. Public applicant DTO never includes the PIN
+        or ciphertext.
+      parameters:
+      - $ref: '#/components/parameters/RequestID'
+      - $ref: '#/components/parameters/Client'
+      - $ref: '#/components/parameters/AppVersion'
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Latest driver application.
+          headers:
+            X-API-Version:
+              $ref: '#/components/headers/X-API-Version'
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverApplication'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '426':
+          $ref: '#/components/responses/UpgradeRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      x-required-roles:
+      - client
+  /api/v1/admin/driver-applications:
+    get:
+      tags:
+      - Administration
+      operationId: listDriverApplications
+      summary: List driver applications
+      description: Newest applications first. Lists never include decrypted PINs or ciphertext.
+      parameters:
+      - $ref: '#/components/parameters/RequestID'
+      - $ref: '#/components/parameters/Client'
+      - $ref: '#/components/parameters/AppVersion'
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - pending
+          - approved
+          - rejected
+          default: pending
+      - in: query
+        name: limit
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+      - in: query
+        name: offset
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 100000
+          default: 0
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: List driver applications.
+          headers:
+            X-API-Version:
+              $ref: '#/components/headers/X-API-Version'
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '426':
+          $ref: '#/components/responses/UpgradeRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      x-required-roles:
+      - admin
+  /api/v1/admin/driver-applications/{id}:
+    get:
+      tags:
+      - Administration
+      operationId: driverApplicationDetail
+      summary: Review an application and decrypted PIN
+      description: Review an application and decrypted PIN
+      parameters:
+      - $ref: '#/components/parameters/RequestID'
+      - $ref: '#/components/parameters/Client'
+      - $ref: '#/components/parameters/AppVersion'
+      - $ref: '#/components/parameters/ID'
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Review an application and decrypted PIN.
+          headers:
+            X-API-Version:
+              $ref: '#/components/headers/X-API-Version'
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminApplicationDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '426':
+          $ref: '#/components/responses/UpgradeRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      x-required-roles:
+      - admin
+    patch:
+      tags:
+      - Administration
+      operationId: reviewDriverApplication
+      summary: Approve or reject an application
+      description: Approval inserts driver while retaining client in the same transaction as the review.
+        Competing reviews return APPLICATION_ALREADY_REVIEWED. Approval of an inactive user returns APPLICANT_INACTIVE.
+        Applicant sees the driver role on next auth refresh.
+      parameters:
+      - $ref: '#/components/parameters/RequestID'
+      - $ref: '#/components/parameters/Client'
+      - $ref: '#/components/parameters/AppVersion'
+      - $ref: '#/components/parameters/ID'
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Approve or reject an application.
+          headers:
+            X-API-Version:
+              $ref: '#/components/headers/X-API-Version'
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverApplication'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '426':
+          $ref: '#/components/responses/UpgradeRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      x-required-roles:
+      - admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewApplicationRequest'
+  /api/v1/districts:
+    get:
+      tags:
+      - Districts
+      operationId: listDistricts
+      summary: Search active districts
+      description: Public; ordered by sort_order then name_az. Fold ə→e, ı/İ→i, ö→o, ü→u, ç→c, ş→s, ğ→g,
+        and lowercase (including uppercase equivalents). Permit districts stay selectable. Cached server-side
+        for 24 hours.
+      parameters:
+      - $ref: '#/components/parameters/RequestID'
+      - $ref: '#/components/parameters/Client'
+      - $ref: '#/components/parameters/AppVersion'
+      - in: query
+        name: q
+        schema:
+          type: string
+          maxLength: 80
+          default: ''
+        description: Trimmed, case-insensitive substring of the folded Azerbaijani search key. samaxi
+          finds Şamaxı. Percent and underscore are literal.
+      security: []
+      responses:
+        '200':
+          description: Search active districts.
+          headers:
+            X-API-Version:
+              $ref: '#/components/headers/X-API-Version'
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DistrictList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '426':
+          $ref: '#/components/responses/UpgradeRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/rides:
+    get:
+      tags:
+      - Rides
+      operationId: searchRides
+      summary: Search available future rides
+      description: Public. Optional filters; identical nonempty stops are invalid. Only published rides
+        with seats_available > 0, future departures, active users/districts. Ordered by departure_at then
+        id. Search ID sets are cached 30–60 seconds with jitter; names/notes and current availability
+        are read from PostgreSQL. Publish/cancel/complete bump the search namespace. No individual seat
+        reservations exist.
+      parameters:
+      - $ref: '#/components/parameters/RequestID'
+      - $ref: '#/components/parameters/Client'
+      - $ref: '#/components/parameters/AppVersion'
+      - in: query
+        name: from_district_id
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 32767
+      - in: query
+        name: to_district_id
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 32767
+      - in: query
+        name: date
+        schema:
+          type: string
+          format: date
+        description: Azerbaijan calendar day (Asia/Baku, UTC+04:00); optional. Four-digit year 0001–9999.
+      security: []
+      responses:
+        '200':
+          description: Search available future rides.
+          headers:
+            X-API-Version:
+              $ref: '#/components/headers/X-API-Version'
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RideList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '426':
+          $ref: '#/components/responses/UpgradeRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags:
+      - Rides
+      operationId: publishRide
+      summary: Publish a ride
+      description: One active ride (published or in_progress) per driver. Service precheck and PostgreSQL
+        partial unique index both return 409 DRIVER_HAS_ACTIVE_RIDE. seats_available initially equals
+        seats_total. Names/district metadata are included in the response.
+      parameters:
+      - $ref: '#/components/parameters/RequestID'
+      - $ref: '#/components/parameters/Client'
+      - $ref: '#/components/parameters/AppVersion'
+      security:
+      - bearerAuth: []
+      responses:
+        '201':
+          description: Publish a ride.
+          headers:
+            X-API-Version:
+              $ref: '#/components/headers/X-API-Version'
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ride'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '426':
+          $ref: '#/components/responses/UpgradeRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      x-required-roles:
+      - driver
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishRideRequest'
+  /api/v1/rides/me/active:
+    get:
+      tags:
+      - Rides
+      operationId: myActiveRide
+      summary: Current active ride
+      description: Published or in_progress ride regardless of whether departure has passed. 404 NOT_FOUND
+        means no active ride and publishing is allowed.
+      parameters:
+      - $ref: '#/components/parameters/RequestID'
+      - $ref: '#/components/parameters/Client'
+      - $ref: '#/components/parameters/AppVersion'
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Current active ride.
+          headers:
+            X-API-Version:
+              $ref: '#/components/headers/X-API-Version'
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ride'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '426':
+          $ref: '#/components/responses/UpgradeRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      x-required-roles:
+      - driver
+  /api/v1/rides/{id}:
+    get:
+      tags:
+      - Rides
+      operationId: rideDetail
+      summary: Public ride details
+      description: Any saved status for a ride whose driver account is active. No phone, email, account
+        profile, PIN, or application details are exposed.
+      parameters:
+      - $ref: '#/components/parameters/RequestID'
+      - $ref: '#/components/parameters/Client'
+      - $ref: '#/components/parameters/AppVersion'
+      - $ref: '#/components/parameters/ID'
+      security: []
+      responses:
+        '200':
+          description: Public ride details.
+          headers:
+            X-API-Version:
+              $ref: '#/components/headers/X-API-Version'
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ride'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '426':
+          $ref: '#/components/responses/UpgradeRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/rides/{id}/cancel:
+    patch:
+      tags:
+      - Rides
+      operationId: cancelRide
+      summary: Cancel the owner’s active ride
+      description: Only the owner driver can act. Atomically changes published/in_progress to cancelled,
+        allowing a new publish. An already terminal ride returns 409 RIDE_NOT_ACTIVE. Search namespace
+        is invalidated after commit. No request body.
+      parameters:
+      - $ref: '#/components/parameters/RequestID'
+      - $ref: '#/components/parameters/Client'
+      - $ref: '#/components/parameters/AppVersion'
+      - $ref: '#/components/parameters/ID'
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Cancel the owner’s active ride.
+          headers:
+            X-API-Version:
+              $ref: '#/components/headers/X-API-Version'
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ride'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '426':
+          $ref: '#/components/responses/UpgradeRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      x-required-roles:
+      - driver
+  /api/v1/rides/{id}/complete:
+    patch:
+      tags:
+      - Rides
+      operationId: completeRide
+      summary: Complete the owner’s active ride
+      description: Only the owner driver can act. Atomically changes published/in_progress to completed,
+        allowing a new publish. An already terminal ride returns 409 RIDE_NOT_ACTIVE. Search namespace
+        is invalidated after commit. No request body.
+      parameters:
+      - $ref: '#/components/parameters/RequestID'
+      - $ref: '#/components/parameters/Client'
+      - $ref: '#/components/parameters/AppVersion'
+      - $ref: '#/components/parameters/ID'
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Complete the owner’s active ride.
+          headers:
+            X-API-Version:
+              $ref: '#/components/headers/X-API-Version'
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ride'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '426':
+          $ref: '#/components/responses/UpgradeRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      x-required-roles:
+      - driver
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: HS256 access JWT; sub, roles, iat, exp, jti. Roles are checked per operation.
+    refreshCookie:
+      type: apiKey
+      in: cookie
+      name: roadmates_refresh
+      description: Opaque 32-byte token, base64url-encoded (43 characters). Sent only as an HttpOnly cookie.
+  headers:
+    X-API-Version:
+      schema:
+        type: string
+        enum:
+        - '1'
+      description: Backend API generation.
+    X-Request-ID:
+      schema:
+        type: string
+      description: Request correlation ID; also present in JSON errors.
+    Cache-Control:
+      schema:
+        type: string
+        enum:
+        - no-store
+      description: JSON responses are never cached by the browser.
+    Set-Cookie:
+      schema:
+        type: string
+      description: Sets or clears roadmates_refresh; HttpOnly; SameSite=Lax; Path=/api/v1/auth; Secure
+        according to COOKIE_SECURE; Max-Age according to REFRESH_TOKEN_TTL. Never read by JavaScript.
+    Retry-After:
+      schema:
+        type: string
+        pattern: ^[0-9]+$
+      description: Whole seconds until the rate window resets.
+  parameters:
+    AppVersion:
+      in: header
+      name: X-App-Version
+      required: false
+      schema:
+        type: string
+      description: Full semantic version, for example 0.1.0. Missing is allowed; malformed is 400; outdated
+        is 426.
+    Client:
+      in: header
+      name: X-Client
+      required: false
+      schema:
+        type: string
+      description: Client identity for logs; web for the React app.
+    RequestID:
+      in: header
+      name: X-Request-ID
+      required: false
+      schema:
+        type: string
+        maxLength: 128
+      description: Optional valid correlation ID; invalid/missing values are replaced.
+    Origin:
+      in: header
+      name: Origin
+      required: true
+      schema:
+        type: string
+        format: uri
+      description: Must exactly equal ALLOWED_ORIGIN, including scheme, host, and non-default port.
+    CSRF:
+      in: header
+      name: X-Requested-With
+      required: true
+      schema:
+        type: string
+        enum:
+        - roadmates
+    ID:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    Error:
+      type: object
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          enum:
+          - INVALID_INPUT
+          - PASSWORD_POLICY
+          - APP_VERSION_INVALID
+          - APP_VERSION_UNSUPPORTED
+          - UNAUTHORIZED
+          - INVALID_CREDENTIALS
+          - REFRESH_TOKEN_REUSED
+          - FORBIDDEN
+          - CSRF_INVALID
+          - NOT_FOUND
+          - API_VERSION_NOT_FOUND
+          - METHOD_NOT_ALLOWED
+          - EMAIL_TAKEN
+          - DRIVER_ALREADY_VERIFIED
+          - APPLICATION_PENDING
+          - APPLICATION_ALREADY_REVIEWED
+          - APPLICANT_INACTIVE
+          - DRIVER_HAS_ACTIVE_RIDE
+          - RIDE_NOT_ACTIVE
+          - RATE_LIMITED
+          - INTERNAL_ERROR
+        message:
+          type: string
+        request_id:
+          type: string
+      required:
+      - code
+      - message
+      - request_id
+    User:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        first_name:
+          type: string
+          minLength: 1
+          maxLength: 60
+          description: Trimmed Unicode letters/marks, spaces, apostrophes or hyphens.
+        last_name:
+          type: string
+          minLength: 1
+          maxLength: 60
+          description: Trimmed Unicode letters/marks, spaces, apostrophes or hyphens.
+        phone:
+          type: string
+          minLength: 7
+          maxLength: 25
+          description: 7–15 digits; optional leading +, spaces, parentheses, and hyphens.
+        roles:
+          type: array
+          items:
+            type: string
+            enum:
+            - client
+            - driver
+            - admin
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        is_active:
+          type: boolean
+      required:
+      - id
+      - email
+      - first_name
+      - last_name
+      - phone
+      - roles
+      - created_at
+      - updated_at
+      - is_active
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 72
+          writeOnly: true
+          description: 8 or more Unicode characters, at most 72 UTF-8 bytes. Requires uppercase, lowercase,
+            and punctuation/symbol. No whitespace or control characters. bcrypt cost 12.
+        first_name:
+          type: string
+          minLength: 1
+          maxLength: 60
+          description: Trimmed Unicode letters/marks, spaces, apostrophes or hyphens.
+        last_name:
+          type: string
+          minLength: 1
+          maxLength: 60
+          description: Trimmed Unicode letters/marks, spaces, apostrophes or hyphens.
+        phone:
+          type: string
+          minLength: 7
+          maxLength: 25
+          description: 7–15 digits; optional leading +, spaces, parentheses, and hyphens.
+      required:
+      - email
+      - password
+      - first_name
+      - last_name
+      - phone
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          format: password
+          minLength: 1
+          maxLength: 72
+          writeOnly: true
+          description: At most 72 UTF-8 bytes.
+      required:
+      - email
+      - password
+    Session:
+      type: object
+      additionalProperties: false
+      properties:
+        access_token:
+          type: string
+          description: HS256 JWT. Keep only in memory; refresh token is delivered exclusively in the HttpOnly
+            cookie.
+        user:
+          $ref: '#/components/schemas/User'
+      required:
+      - access_token
+      - user
+    DriverApplicationRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        contact_phone:
+          type: string
+          minLength: 7
+          maxLength: 25
+          description: 7–15 digits; optional leading +, spaces, parentheses, and hyphens.
+        first_name:
+          type: string
+          minLength: 1
+          maxLength: 60
+          description: Trimmed Unicode letters/marks, spaces, apostrophes or hyphens.
+        last_name:
+          type: string
+          minLength: 1
+          maxLength: 60
+          description: Trimmed Unicode letters/marks, spaces, apostrophes or hyphens.
+        pin_code:
+          type: string
+          minLength: 7
+          maxLength: 7
+          pattern: ^[A-Za-z0-9]{7}$
+          writeOnly: true
+          description: Trimmed, uppercased, then encrypted with AES-256-GCM. Never logged.
+        car_make:
+          type: string
+          minLength: 1
+          maxLength: 50
+        car_model:
+          type: string
+          minLength: 1
+          maxLength: 50
+        car_year:
+          type: integer
+          minimum: 1980
+          description: Maximum is the current UTC year plus one.
+        car_plate:
+          type: string
+          minLength: 3
+          maxLength: 15
+          description: Letters/numbers, spaces and hyphens; trimmed and uppercased.
+        car_color:
+          type: string
+          minLength: 1
+          maxLength: 50
+        seats:
+          type: integer
+          minimum: 1
+          maximum: 8
+      required:
+      - contact_phone
+      - first_name
+      - last_name
+      - pin_code
+      - car_make
+      - car_model
+      - car_year
+      - car_plate
+      - car_color
+      - seats
+    DriverApplication:
+      type: object
+      additionalProperties: false
+      properties:
+        contact_phone:
+          type: string
+          minLength: 7
+          maxLength: 25
+          description: 7–15 digits; optional leading +, spaces, parentheses, and hyphens.
+        first_name:
+          type: string
+          minLength: 1
+          maxLength: 60
+          description: Trimmed Unicode letters/marks, spaces, apostrophes or hyphens.
+        last_name:
+          type: string
+          minLength: 1
+          maxLength: 60
+          description: Trimmed Unicode letters/marks, spaces, apostrophes or hyphens.
+        car_make:
+          type: string
+          minLength: 1
+          maxLength: 50
+        car_model:
+          type: string
+          minLength: 1
+          maxLength: 50
+        car_year:
+          type: integer
+          minimum: 1980
+          description: Maximum is the current UTC year plus one.
+        car_plate:
+          type: string
+          minLength: 3
+          maxLength: 15
+          description: Letters/numbers, spaces and hyphens; trimmed and uppercased.
+        car_color:
+          type: string
+          minLength: 1
+          maxLength: 50
+        seats:
+          type: integer
+          minimum: 1
+          maximum: 8
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - pending
+          - approved
+          - rejected
+        reviewed_by:
+          type: string
+          format: uuid
+          nullable: true
+        reviewed_at:
+          type: string
+          format: date-time
+          nullable: true
+        reject_reason:
+          type: string
+          maxLength: 500
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+      required:
+      - contact_phone
+      - first_name
+      - last_name
+      - car_make
+      - car_model
+      - car_year
+      - car_plate
+      - car_color
+      - seats
+      - id
+      - user_id
+      - status
+      - reviewed_by
+      - reviewed_at
+      - reject_reason
+      - created_at
+    AdminApplicationDetail:
+      type: object
+      additionalProperties: false
+      properties:
+        contact_phone:
+          type: string
+          minLength: 7
+          maxLength: 25
+          description: 7–15 digits; optional leading +, spaces, parentheses, and hyphens.
+        first_name:
+          type: string
+          minLength: 1
+          maxLength: 60
+          description: Trimmed Unicode letters/marks, spaces, apostrophes or hyphens.
+        last_name:
+          type: string
+          minLength: 1
+          maxLength: 60
+          description: Trimmed Unicode letters/marks, spaces, apostrophes or hyphens.
+        car_make:
+          type: string
+          minLength: 1
+          maxLength: 50
+        car_model:
+          type: string
+          minLength: 1
+          maxLength: 50
+        car_year:
+          type: integer
+          minimum: 1980
+          description: Maximum is the current UTC year plus one.
+        car_plate:
+          type: string
+          minLength: 3
+          maxLength: 15
+          description: Letters/numbers, spaces and hyphens; trimmed and uppercased.
+        car_color:
+          type: string
+          minLength: 1
+          maxLength: 50
+        seats:
+          type: integer
+          minimum: 1
+          maximum: 8
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - pending
+          - approved
+          - rejected
+        reviewed_by:
+          type: string
+          format: uuid
+          nullable: true
+        reviewed_at:
+          type: string
+          format: date-time
+          nullable: true
+        reject_reason:
+          type: string
+          maxLength: 500
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        pin_code:
+          type: string
+          minLength: 7
+          maxLength: 7
+          description: Decrypted PIN. Admin detail only; mask by default and never persist or log.
+      required:
+      - contact_phone
+      - first_name
+      - last_name
+      - car_make
+      - car_model
+      - car_year
+      - car_plate
+      - car_color
+      - seats
+      - id
+      - user_id
+      - status
+      - reviewed_by
+      - reviewed_at
+      - reject_reason
+      - created_at
+      - pin_code
+    ReviewApplicationRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        action:
+          type: string
+          enum:
+          - approve
+          - reject
+        reason:
+          type: string
+          maxLength: 500
+          description: Optional rejection explanation; ignored when approving. Newlines allowed.
+      required:
+      - action
+    ApplicationList:
+      type: object
+      additionalProperties: false
+      properties:
+        applications:
+          type: array
+          items:
+            $ref: '#/components/schemas/DriverApplication'
+        pagination:
+          type: object
+          additionalProperties: false
+          properties:
+            limit:
+              type: integer
+              minimum: 1
+              maximum: 100
+            offset:
+              type: integer
+              minimum: 0
+              maximum: 100000
+            has_more:
+              type: boolean
+          required:
+          - limit
+          - offset
+          - has_more
+      required:
+      - applications
+      - pagination
+    District:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          minimum: 1
+          maximum: 32767
+        name_az:
+          type: string
+        slug:
+          type: string
+        requires_permit:
+          type: boolean
+          description: Selectable normally. A travel permit may be required.
+      required:
+      - id
+      - name_az
+      - slug
+      - requires_permit
+    DistrictList:
+      type: object
+      additionalProperties: false
+      properties:
+        districts:
+          type: array
+          items:
+            $ref: '#/components/schemas/District'
+      required:
+      - districts
+    PublishRideRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        from_district_id:
+          type: integer
+          minimum: 1
+          maximum: 32767
+        to_district_id:
+          type: integer
+          minimum: 1
+          maximum: 32767
+        departure_at:
+          type: string
+          format: date-time
+          description: Future RFC3339 timestamp with explicit UTC/offset. Stops must be different active
+            districts.
+        seats_total:
+          type: integer
+          minimum: 1
+          maximum: 8
+        price_azn:
+          type: number
+          minimum: 0
+          maximum: 999999.99
+          multipleOf: 0.01
+          description: AZN per seat, plain decimal notation with at most two fractional digits. Exponent
+            notation is rejected in requests.
+        notes:
+          type: string
+          maxLength: 300
+          description: Trimmed; no controls except newline.
+      required:
+      - from_district_id
+      - to_district_id
+      - departure_at
+      - seats_total
+      - price_azn
+    Ride:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        driver:
+          type: object
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+              format: uuid
+            first_name:
+              type: string
+              minLength: 1
+              maxLength: 60
+              description: Trimmed Unicode letters/marks, spaces, apostrophes or hyphens.
+            last_name:
+              type: string
+              minLength: 1
+              maxLength: 60
+              description: Trimmed Unicode letters/marks, spaces, apostrophes or hyphens.
+          required:
+          - id
+          - first_name
+          - last_name
+        from_district_id:
+          type: integer
+          minimum: 1
+          maximum: 32767
+        to_district_id:
+          type: integer
+          minimum: 1
+          maximum: 32767
+        from_district:
+          $ref: '#/components/schemas/District'
+        to_district:
+          $ref: '#/components/schemas/District'
+        departure_at:
+          type: string
+          format: date-time
+        seats_total:
+          type: integer
+          minimum: 1
+          maximum: 8
+        seats_available:
+          type: integer
+          minimum: 0
+          maximum: 8
+        price_azn:
+          type: number
+          minimum: 0
+          maximum: 999999.99
+          multipleOf: 0.01
+          description: AZN per seat, plain decimal notation with at most two fractional digits. Exponent
+            notation is rejected in requests.
+        notes:
+          type: string
+          maxLength: 300
+        status:
+          type: string
+          enum:
+          - published
+          - in_progress
+          - completed
+          - cancelled
+        created_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - driver
+      - from_district_id
+      - to_district_id
+      - from_district
+      - to_district
+      - departure_at
+      - seats_total
+      - seats_available
+      - price_azn
+      - notes
+      - status
+      - created_at
+    RideList:
+      type: object
+      additionalProperties: false
+      properties:
+        rides:
+          type: array
+          items:
+            $ref: '#/components/schemas/Ride'
+      required:
+      - rides
+    Version:
+      type: object
+      additionalProperties: false
+      properties:
+        app_version:
+          type: string
+        commit:
+          type: string
+        build_time:
+          type: string
+          description: UTC build timestamp, or unknown for an unconfigured build.
+        go_version:
+          type: string
+        api_versions:
+          type: array
+          items:
+            type: string
+            enum:
+            - v1
+        min_supported_app_version:
+          type: string
+      required:
+      - app_version
+      - commit
+      - build_time
+      - go_version
+      - api_versions
+      - min_supported_app_version
+    Readiness:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+          - ok
+          - degraded
+          - not_ready
+        postgres:
+          type: string
+          enum:
+          - up
+          - down
+        redis:
+          type: string
+          enum:
+          - up
+          - down
+      required:
+      - status
+      - postgres
+      - redis
+  responses:
+    BadRequest:
+      description: 'Invalid request or malformed app version. Codes: INVALID_INPUT, PASSWORD_POLICY, APP_VERSION_INVALID.'
+      headers:
+        X-API-Version:
+          $ref: '#/components/headers/X-API-Version'
+        X-Request-ID:
+          $ref: '#/components/headers/X-Request-ID'
+        Cache-Control:
+          $ref: '#/components/headers/Cache-Control'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: 'Missing/invalid session, invalid credentials, or reused refresh token. Codes: UNAUTHORIZED,
+        INVALID_CREDENTIALS, REFRESH_TOKEN_REUSED.'
+      headers:
+        X-API-Version:
+          $ref: '#/components/headers/X-API-Version'
+        X-Request-ID:
+          $ref: '#/components/headers/X-Request-ID'
+        Cache-Control:
+          $ref: '#/components/headers/Cache-Control'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: 'Insufficient role, different ride owner, or failed CSRF checks. Codes: FORBIDDEN,
+        CSRF_INVALID.'
+      headers:
+        X-API-Version:
+          $ref: '#/components/headers/X-API-Version'
+        X-Request-ID:
+          $ref: '#/components/headers/X-Request-ID'
+        Cache-Control:
+          $ref: '#/components/headers/Cache-Control'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: 'Resource missing, no active ride/application, or unknown API version. Codes: NOT_FOUND,
+        API_VERSION_NOT_FOUND.'
+      headers:
+        X-API-Version:
+          $ref: '#/components/headers/X-API-Version'
+        X-Request-ID:
+          $ref: '#/components/headers/X-Request-ID'
+        Cache-Control:
+          $ref: '#/components/headers/Cache-Control'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    MethodNotAllowed:
+      description: 'Unsupported HTTP method; includes Allow. Codes: METHOD_NOT_ALLOWED.'
+      headers:
+        X-API-Version:
+          $ref: '#/components/headers/X-API-Version'
+        X-Request-ID:
+          $ref: '#/components/headers/X-Request-ID'
+        Cache-Control:
+          $ref: '#/components/headers/Cache-Control'
+        Allow:
+          schema:
+            type: string
+          description: Allowed methods for this path.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: 'The operation conflicts with current account, application, or ride state. Codes: EMAIL_TAKEN,
+        DRIVER_ALREADY_VERIFIED, APPLICATION_PENDING, APPLICATION_ALREADY_REVIEWED, APPLICANT_INACTIVE,
+        DRIVER_HAS_ACTIVE_RIDE, RIDE_NOT_ACTIVE.'
+      headers:
+        X-API-Version:
+          $ref: '#/components/headers/X-API-Version'
+        X-Request-ID:
+          $ref: '#/components/headers/X-Request-ID'
+        Cache-Control:
+          $ref: '#/components/headers/Cache-Control'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UpgradeRequired:
+      description: 'App version is below the configured supported minimum. Codes: APP_VERSION_UNSUPPORTED.'
+      headers:
+        X-API-Version:
+          $ref: '#/components/headers/X-API-Version'
+        X-Request-ID:
+          $ref: '#/components/headers/X-Request-ID'
+        Cache-Control:
+          $ref: '#/components/headers/Cache-Control'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    RateLimited:
+      description: 'IP/route-group request limit exceeded. Codes: RATE_LIMITED.'
+      headers:
+        X-API-Version:
+          $ref: '#/components/headers/X-API-Version'
+        X-Request-ID:
+          $ref: '#/components/headers/X-Request-ID'
+        Cache-Control:
+          $ref: '#/components/headers/Cache-Control'
+        Retry-After:
+          $ref: '#/components/headers/Retry-After'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalError:
+      description: 'Unexpected server or PostgreSQL failure. Cache outages fall back to PostgreSQL and
+        are not an error response. Codes: INTERNAL_ERROR.'
+      headers:
+        X-API-Version:
+          $ref: '#/components/headers/X-API-Version'
+        X-Request-ID:
+          $ref: '#/components/headers/X-Request-ID'
+        Cache-Control:
+          $ref: '#/components/headers/Cache-Control'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

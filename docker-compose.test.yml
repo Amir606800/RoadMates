@@ -1,0 +1,45 @@
+name: roadmates-tests
+
+# Disposable dependencies for make test; no host ports or application volumes.
+# These credentials belong only to the temporary test containers.
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: roadmates_test
+      POSTGRES_PASSWORD: roadmates-test-only
+      POSTGRES_DB: roadmates_test
+    tmpfs: [/var/lib/postgresql/data]
+    networks: [tests]
+    healthcheck:
+      test: [CMD, pg_isready, -U, roadmates_test, -d, roadmates_test]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+  redis-test:
+    image: redis:7-alpine
+    environment:
+      REDISCLI_AUTH: roadmates-test-only
+    command: [redis-server, --requirepass, roadmates-test-only, --save, '', --appendonly, 'no']
+    networks: [tests]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+  backend-test:
+    image: roadmates-backend-test
+    build:
+      context: ./backend
+      target: test
+    environment:
+      TEST_DATABASE_URL: postgres://roadmates_test:roadmates-test-only@postgres-test:5432/roadmates_test?sslmode=disable
+      TEST_REDIS_URL: redis://:roadmates-test-only@redis-test:6379/0
+    command: [go, test, -race, ./..., -count=1, -timeout=120s]
+    depends_on:
+      postgres-test: {condition: service_healthy}
+      redis-test: {condition: service_healthy}
+    networks: [tests]
+networks:
+  tests:
+    internal: true

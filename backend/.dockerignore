@@ -1,0 +1,7 @@
+.cache
+.env
+.env.*
+!.env.example
+*.log
+server
+server.exe
